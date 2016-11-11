@@ -14,19 +14,22 @@ type AppEndpoint struct {
 }
 
 type Profile struct {
-	ID       int    `json:"id"`
-	DeviceID string `json:"device"`
-	Name     string `json:"name"`
-	Points   int    `json:"points"`
-	Friends  []int  `json:"friends"`
-	Picture  string `json:"picture"`
+	ID      int    `json:"id"`
+	Name    string `json:"name"`
+	Points  int    `json:"points"`
+	Friends []int  `json:"friends"`
+	Picture string `json:"picture"`
 }
 
 func validate(accessToken string) bool {
-	return true
+	return accessToken == "mrpot"
 }
 
-func createProfile(device string, name string) *Profile {
+func createAccessToken(device string) string {
+	return "mrpot"
+}
+
+func createProfile(name string) *Profile {
 	return &Profile{
 		ID:      1,
 		Name:    "Mr. Pot",
@@ -68,13 +71,13 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func registerHandler(w http.ResponseWriter, r *http.Request) {
+func profileHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var profileID int
-	var accessToken []string
+	var accessTokens []string
 	var ok bool
 
-	if accessToken, ok = r.URL.Query()["token"]; !ok || len(accessToken) != 1 || !validate(accessToken[0]) {
+	if accessTokens, ok = r.URL.Query()["token"]; !ok || len(accessTokens) != 1 || !validate(accessTokens[0]) {
 		http.Error(w, "invalid access token", http.StatusUnauthorized)
 		return
 	}
@@ -105,8 +108,45 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func profileHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "profile handler")
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	var deviceIDs, names []string
+	var err error
+	var ok bool
+
+	if deviceIDs, ok = r.URL.Query()["device"]; !ok || len(deviceIDs) != 1 {
+		http.Error(w, "invalid device id", http.StatusUnauthorized)
+		return
+	}
+
+	deviceID := deviceIDs[0]
+	if names, ok = r.URL.Query()["name"]; !ok || len(names) != 1 {
+		http.Error(w, "invalid name", http.StatusUnauthorized)
+		return
+	}
+	name := names[0]
+
+	token := createAccessToken(deviceID)
+	profile := createProfile(name)
+
+	if profile == nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(struct {
+		Token string `json:"token"`
+		ID    int    `json:"id"`
+	}{
+		Token: token,
+		ID:    profile.ID,
+	})
+
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
 }
 
 func getPictureHandler(w http.ResponseWriter, r *http.Request) {
