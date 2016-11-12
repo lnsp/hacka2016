@@ -43,8 +43,8 @@ type JSONProfile struct {
 
 type Friendship struct {
 	gorm.Model
-	From Profile
-	To   Profile
+	Source uint
+	Target uint
 }
 
 // The internal profile model
@@ -98,13 +98,13 @@ func createAccessToken(device string) string {
 }
 
 // Create a new profile linked to a user account.
-func createAccount(device, name string) (*JSONProfile, string) {
+func createAccount(device, name string) (uint, string) {
 	var account Account
 	var profile Profile
 
 	database.First(&account, "Device = ?", device)
 	if account.Token != "" {
-		return toJSONProfile(account.User), account.Token
+		return account.User.ID, account.Token
 	}
 
 	profile = Profile{
@@ -122,18 +122,30 @@ func createAccount(device, name string) (*JSONProfile, string) {
 	}
 	database.Create(&account)
 
-	return toJSONProfile(account.User), account.Token
+	// Create demo relationships
+	otherProfiles := make([]Profile, 0)
+	database.Find(&otherProfiles)
+
+	for _, element := range otherProfiles {
+		database.Create(&Friendship{
+			Source: profile.ID,
+			Target: element.ID,
+		})
+	}
+
+	return account.User.ID, account.Token
 }
 
-func getFriends(profile Profile) []uint {
-	var ids []uint
-	//var friends []Profile
+func getFriends(id uint) []uint {
+	ids := make([]uint, 0, 0)
 
-	//database.Model(&profile).Related(&friends)
+	var friendships []Friendship
+	database.Where("Source = ?", id).Find(&friendships)
 
-	//for _, element := range friends {
-	//		ids = append(ids, element.ID)
-	//	}
+	for _, element := range friendships {
+		ids = append(ids, element.Target)
+	}
+
 	return ids
 }
 
@@ -156,7 +168,7 @@ func toJSONProfile(profile Profile) *JSONProfile {
 		ID:      profile.ID,
 		Name:    profile.Name,
 		Points:  profile.Points,
-		Friends: getFriends(profile),
+		Friends: getFriends(profile.ID),
 		Picture: "",
 	}
 	return profileJson
@@ -263,18 +275,13 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	name := names[0]
 
-	profile, token := createAccount(deviceID, name)
-	if profile == nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
+	id, token := createAccount(deviceID, name)
 	data, err := json.Marshal(struct {
 		Token string `json:"token"`
 		ID    uint   `json:"id"`
 	}{
 		Token: token,
-		ID:    profile.ID,
+		ID:    id,
 	})
 
 	if err != nil {
@@ -302,7 +309,7 @@ func initDatabase() {
 	if err != nil {
 		panic(err)
 	}
-	database.AutoMigrate(&Profile{}, &Account{})
+	database.AutoMigrate(&Friendship{}, &Profile{}, &Account{})
 	database.LogMode(true)
 }
 
