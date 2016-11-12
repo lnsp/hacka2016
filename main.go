@@ -89,7 +89,7 @@ type Hotspot struct {
 }
 
 func updateHotspot(hotspot *Hotspot) (string, string, string) {
-	ssid := generateToken(hotspot.Session)
+	ssid := generateSSID(hotspot.Session)
 	database.Model(hotspot).Update("Session", ssid)
 
 	var name, color string
@@ -118,10 +118,10 @@ func captureHotspot(hotspot Hotspot, id uint) bool {
 }
 
 func createHotspot() *Hotspot {
-	token := generateToken(ULTIMATE_KEY)
+	token := generateSSID(ULTIMATE_KEY)
 	hotspot := &Hotspot{
 		Token:       token,
-		Session:     generateToken(token + ULTIMATE_KEY),
+		Session:     generateSSID(token + ULTIMATE_KEY),
 		LastCapture: time.Now(),
 		Conqueror:   0,
 	}
@@ -157,6 +157,11 @@ func generateToken(device string) string {
 	sha.Write([]byte(timestamp))
 	sha.Write([]byte(device))
 	return hex.EncodeToString(sha.Sum(nil))
+}
+
+func generateSSID(active string) string {
+	str := generateToken(active)
+	return str[:32]
 }
 
 // Create a new access token or retrieve an existing.
