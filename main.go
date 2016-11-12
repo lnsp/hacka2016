@@ -1,11 +1,16 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type AppEndpoint struct {
@@ -21,12 +26,39 @@ type Profile struct {
 	Picture string `json:"picture"`
 }
 
+type AccountModel struct {
+	gorm.Model
+	Device string
+	Token  string
+}
+
+var database *gorm.DB
+
 func validate(accessToken string) bool {
-	return accessToken == "mrpot"
+	var account AccountModel
+	database.First(&account, "token = ?", accessToken)
+	if account.ID == 0 {
+		return false
+	}
+	return true
+}
+
+func generateToken(device string) string {
+	timestamp := time.Now().Format("20060102150405")
+	sha := sha1.New()
+	sha.Write([]byte(timestamp))
+	sha.Write([]byte(device))
+	return hex.EncodeToString(sha.Sum(nil))
 }
 
 func createAccessToken(device string) string {
-	return "mrpot"
+	token := generateToken(device)
+	account := &AccountModel{
+		Device: device,
+		Token:  token,
+	}
+	database.Create(account)
+	return token
 }
 
 func createProfile(name string) *Profile {
@@ -157,7 +189,18 @@ func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "upload register handler")
 }
 
+func initDatabase() {
+	var err error
+	database, err = gorm.Open("sqlite3", "honeypot.db")
+	if err != nil {
+		panic(err)
+	}
+	database.AutoMigrate(&AccountModel{})
+}
+
 func main() {
+	initDatabase()
+
 	http.HandleFunc("/", versionHandler)
 	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/profile", profileHandler)
