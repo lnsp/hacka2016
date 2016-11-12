@@ -76,6 +76,14 @@ type Account struct {
 	User   Profile
 }
 
+// The hotspots.
+type Hotspot struct {
+	gorm.Model
+	Device   string
+	Token    string
+	Deployer uint
+}
+
 // Validate an access token.
 func validate(accessToken string) bool {
 	var account Account
@@ -191,8 +199,9 @@ type nearbyEntry struct {
 	Date     time.Time `json:"date"`
 }
 
+// Retrieve all nearby entities.
 func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
-	lastHour := time.Now().Add(-time.Hour)
+	lastHour := time.Now().Add(-time.Minute)
 
 	positions := []Position{}
 	database.Where("date > ?", lastHour).Find(&positions)
@@ -200,9 +209,21 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 	sourcePoint := geo.NewPoint(latitude, longitude)
 	entries := []nearbyEntry{}
 
+	dates := make(map[uint]time.Time)
+
 	for _, element := range positions {
 		if element.Source == id {
 			continue
+		}
+
+		if existing, ok := dates[element.Source]; ok {
+			if existing.After(element.Date) {
+				continue
+			} else {
+				dates[element.Source] = element.Date
+			}
+		} else {
+			dates[element.Source] = element.Date
 		}
 
 		nearbyPoint := geo.NewPoint(element.Latitude, element.Longitude)
