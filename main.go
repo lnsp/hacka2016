@@ -312,7 +312,11 @@ func nearbyHandler(w http.ResponseWriter, r *http.Request) {
 	updatePosition(id, latitude, longitude)
 	nearby := getNearby(id, latitude, longitude)
 
-	data, err := json.Marshal(nearby)
+	data, err := json.Marshal(struct {
+		Nearby []nearbyEntry `json:"nearby"`
+	}{
+		Nearby: nearby,
+	})
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
