@@ -262,7 +262,7 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 	lastHour := time.Now().Add(-time.Minute)
 
 	positions := []Position{}
-	database.Where("date > ?", lastHour).Find(&positions)
+	database.Where("date > ?", lastHour).Order("date desc").Find(&positions)
 
 	sourcePoint := geo.NewPoint(latitude, longitude)
 	entries := []nearbyEntry{}
