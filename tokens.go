@@ -38,7 +38,7 @@ func generateToken(device string) string {
 
 func generateSSID(active string) string {
 	str := generateToken(active)
-	return str[:32]
+	return "honeypot" + str[:24]
 }
 
 // Create a new access token or retrieve an existing.
