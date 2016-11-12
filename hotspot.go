@@ -127,12 +127,12 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		SSID    string `json:"ssid"`
 		Name    string `json:"name"`
 		Color   string `json:"color"`
-		Capture string `json:"capture"`
+		Capture int64  `json:"capture"`
 	}{
 		SSID:    ssid,
 		Name:    name,
 		Color:   color,
-		Capture: hotspot.LastCapture.String(),
+		Capture: int64(hotspot.LastCapture.Unix()),
 	})
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

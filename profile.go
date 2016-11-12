@@ -44,21 +44,6 @@ func createAccount(device, name string) (uint, string) {
 	}
 	database.Create(&account)
 
-	// Create demo relationships
-	otherProfiles := make([]Profile, 0)
-	database.Find(&otherProfiles)
-
-	for _, element := range otherProfiles {
-		if element.ID == profile.ID {
-			continue
-		}
-
-		database.Create(&Friendship{
-			Source: profile.ID,
-			Target: element.ID,
-		})
-	}
-
 	return account.User.ID, account.Token
 }
 
@@ -105,7 +90,7 @@ func toJSONProfile(profile Profile) *JSONProfile {
 		Name:    profile.Name,
 		Points:  profile.Points,
 		Friends: getFriends(profile.ID),
-		Color:   "FF4081",
+		Color:   profile.Color,
 		Picture: "",
 	}
 	return profileJson
@@ -206,5 +191,83 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Write(data)
+}
+
+func meetHandler(w http.ResponseWriter, r *http.Request) {
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
+		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		return
+	}
+	vars := mux.Vars(r)
+	device := vars["device"]
+	id := getID(accessTokens[0])
+
+	// get device user id
+	var account Account
+	database.First(&account, "Device = ?", device)
+	if account.Token == "" {
+		http.Error(w, "invalid device id", http.StatusBadRequest)
+		return
+	}
+
+	var profile Profile
+	database.Model(&account).Related(&profile, "User")
+
+	// Check if friendship exists
+	var friendship Friendship
+	database.First(&friendship, "Source = ? AND Target = ?", id, profile.ID)
+	if friendship.Source == id {
+		http.Error(w, "existing friendship, fuck off", http.StatusBadRequest)
+		return
+	}
+
+	// No -> Create one
+	friendship = Friendship{
+		Source: id,
+		Target: profile.ID,
+	}
+	database.Create(&friendship)
+
+	data, err := json.Marshal(struct {
+		Source uint `json:"source"`
+		Target uint `json:"target"`
+	}{
+		Source: id,
+		Target: profile.ID,
+	})
+	if err != nil {
+		http.Error(w, "json error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
+}
+
+func settingsColorHandler(w http.ResponseWriter, r *http.Request) {
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
+		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		return
+	}
+
+	colors, ok := r.URL.Query()["color"]
+	if !ok || len(colors) != 1 {
+		http.Error(w, "invalid color", http.StatusBadRequest)
+		return
+	}
+	rgb := colors[0]
+	id := getID(accessTokens[0])
+
+	var profile Profile
+	database.First(&profile, "ID = ?", id)
+	database.Model(&profile).Update(Profile{Color: rgb})
+
+	data, err := json.Marshal(toJSONProfile(profile))
+	if err != nil {
+		http.Error(w, "json error", http.StatusInternalServerError)
+		return
+	}
 	w.Write(data)
 }

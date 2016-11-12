@@ -63,12 +63,15 @@ func main() {
 	router.HandleFunc("/register", registerHandler).Methods("GET")
 	router.HandleFunc("/profile/{id}", profileHandler).Methods("GET")
 	router.HandleFunc("/profile", ownProfileHandler).Methods("GET")
-	router.HandleFunc("/picture", getPictureHandler).Methods("GET")
-	router.HandleFunc("/picture", uploadPictureHandler).Methods("POST")
+	router.HandleFunc("/meet/{device}", meetHandler).Methods("GET")
 	router.HandleFunc("/nearby/{latitude}/{longitude}", nearbyHandler).Methods("GET")
 	router.HandleFunc("/capture/{ssid}", captureHotspotHandler).Methods("GET")
 	router.HandleFunc("/hotspot/setup", setupHotspotHandler).Methods("GET")
 	router.HandleFunc("/hotspot/update", updateHotspotHandler).Methods("GET")
+
+	router.HandleFunc("/settings/picture/{id}", getPictureHandler).Methods("GET")
+	router.HandleFunc("/settings/picture", uploadPictureHandler).Methods("POST")
+	router.HandleFunc("/settings/color", settingsColorHandler).Methods("GET")
 
 	http.Handle("/", router)
 
