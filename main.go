@@ -20,6 +20,7 @@ import (
 
 const (
 	MAX_DISTANCE = 0.1
+	ULTIMATE_KEY = "lebonbon"
 )
 
 // The database endpoint
@@ -44,6 +45,7 @@ type JSONProfile struct {
 	Points  int    `json:"points"`
 	Friends []uint `json:"friends"`
 	Picture string `json:"picture"`
+	Color   string `json:"color"`
 }
 
 type Position struct {
@@ -66,6 +68,7 @@ type Profile struct {
 	Points    int
 	Picture   string
 	AccountID uint `gorm:"index"`
+	Color     string
 }
 
 // The internal account model
@@ -79,9 +82,33 @@ type Account struct {
 // The hotspots.
 type Hotspot struct {
 	gorm.Model
-	Device   string
-	Token    string
-	Deployer uint
+	SSID        string
+	LastCapture time.Time
+	Conqueror   uint
+	Token       string
+}
+
+func createHotspot() *Hotspot {
+	token := generateToken(ULTIMATE_KEY)
+	hotspot := &Hotspot{
+		Token:       token,
+		SSID:        generateToken(token + ULTIMATE_KEY),
+		LastCapture: time.Now(),
+		Conqueror:   0,
+	}
+	database.Create(hotspot)
+	return hotspot
+}
+
+func validateHotspot(token string) *Hotspot {
+	var hotspot Hotspot
+	database.First(&hotspot, "token = ?", token)
+
+	if hotspot.Token != token {
+		return nil
+	}
+
+	return &hotspot
 }
 
 // Validate an access token.
@@ -131,6 +158,7 @@ func createAccount(device, name string) (uint, string) {
 		Name:    name,
 		Points:  0,
 		Picture: "",
+		Color:   "FF4081",
 	}
 	database.Create(&profile)
 
@@ -268,6 +296,7 @@ func toJSONProfile(profile Profile) *JSONProfile {
 		Name:    profile.Name,
 		Points:  profile.Points,
 		Friends: getFriends(profile.ID),
+		Color:   "FF4081",
 		Picture: "",
 	}
 	return profileJson
@@ -438,6 +467,77 @@ func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "upload register handler")
 }
 
+func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
+	secrets, ok := r.URL.Query()["secret"]
+	if !ok || len(secrets) != 1 || secrets[0] != ULTIMATE_KEY {
+		http.Error(w, "bad ultimate power", http.StatusUnauthorized)
+		return
+	}
+
+	hotspot := createHotspot()
+	data, err := json.Marshal(struct {
+		Token string `json:"token"`
+		SSID  string `json:"ssid"`
+	}{
+		Token: hotspot.Token,
+		SSID:  hotspot.SSID,
+	})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Write(data)
+}
+
+func captureHotspotHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "capture hotspot handler")
+}
+
+func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
+	tokens, ok := r.URL.Query()["token"]
+	if !ok || len(tokens) != 1 {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+	token := tokens[0]
+
+	hotspot := validateHotspot(token)
+	if hotspot == nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	ssid := generateToken(hotspot.SSID)
+	database.Model(hotspot).Update("SSID", ssid)
+
+	var name, color string
+	if hotspot.Conqueror > 0 {
+		var conqueror Profile
+		database.First(&conqueror, "ID = ?", hotspot.Conqueror)
+		name = conqueror.Name
+		color = conqueror.Color
+	} else {
+		name = "Unknown"
+		color = "FF3400"
+	}
+
+	data, err := json.Marshal(struct {
+		SSID  string `json:"ssid"`
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}{
+		SSID:  hotspot.SSID,
+		Name:  name,
+		Color: color,
+	})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
+}
+
 // Init database handle
 func initDatabase() {
 	var err error
@@ -445,7 +545,7 @@ func initDatabase() {
 	if err != nil {
 		panic(err)
 	}
-	database.AutoMigrate(&Position{}, &Friendship{}, &Profile{}, &Account{})
+	database.AutoMigrate(&Hotspot{}, &Position{}, &Friendship{}, &Profile{}, &Account{})
 	database.LogMode(true)
 }
 
@@ -461,6 +561,9 @@ func main() {
 	router.HandleFunc("/picture", getPictureHandler).Methods("GET")
 	router.HandleFunc("/picture", uploadPictureHandler).Methods("POST")
 	router.HandleFunc("/nearby/{latitude}/{longitude}", nearbyHandler).Methods("GET")
+	router.HandleFunc("/capture/{ssid}", captureHotspotHandler).Methods("GET")
+	router.HandleFunc("/hotspot/setup", setupHotspotHandler).Methods("GET")
+	router.HandleFunc("/hotspot/update", updateHotspotHandler).Methods("GET")
 
 	http.Handle("/", router)
 
