@@ -1,26 +1,55 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"io"
 	"net/http"
+	"os"
+	"strconv"
 )
 
-// Retrieve picture by hash.
-func getPicture(pictureID string) []byte {
-	return []byte{}
-}
+const PICTURE_FOLDER = ""
 
 // Upload a new picture.
-func addPicture(id int, data []byte) string {
-	return ""
-}
+func addPicture(id uint, stream io.Reader) (string, error) {
+	path := PICTURE_FOLDER + strconv.FormatUint(uint64(id), 10)
+	file, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
 
-// Handle /picture GET
-func getPictureHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "get picture handler")
+	_, err = io.Copy(file, stream)
+	if err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 // Handle /picture POST
 func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "upload register handler")
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
+		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		return
+	}
+	token := accessTokens[0]
+	id := getID(token)
+	path, err := addPicture(id, r.Body)
+	if err != nil {
+		http.Error(w, "failed to upload picture", http.StatusBadRequest)
+		return
+	}
+
+	data, err := json.Marshal(struct {
+		Path string `json:"path"`
+	}{
+		Path: path,
+	})
+	if err != nil {
+		http.Error(w, "json error", http.StatusInternalServerError)
+	}
+
+	w.Write(data)
 }

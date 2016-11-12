@@ -25,7 +25,8 @@ func createAccount(device, name string) (uint, string) {
 
 	database.First(&account, "Device = ?", device)
 	if account.Token != "" {
-		return account.User.ID, account.Token
+		database.Model(&account).Related(&profile, "User")
+		return profile.ID, account.Token
 	}
 
 	profile = Profile{
