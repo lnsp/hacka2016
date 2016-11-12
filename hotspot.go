@@ -2,17 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
-func updateHotspot(hotspot *Hotspot) (string, string, string) {
+func updateHotspot(hotspot *Hotspot) string {
 	ssid := generateSSID(hotspot.Session)
 	database.Model(hotspot).Update("Session", ssid)
+	return ssid
+}
 
+func fetchHotspot(hotspot *Hotspot) (string, string) {
 	var name, color string
 	if hotspot.Conqueror > 0 {
 		var conqueror Profile
@@ -21,14 +23,14 @@ func updateHotspot(hotspot *Hotspot) (string, string, string) {
 		color = conqueror.Color
 	} else {
 		name = "Unknown"
-		color = "FF3400"
+		color = "456789"
 	}
 
-	return ssid, name, color
+	return name, color
 }
 
 func captureHotspot(hotspot Hotspot, id uint) bool {
-	nextCapture := time.Now().Add(-time.Minute)
+	nextCapture := time.Now().Add(-time.Second * CAPTURE_TIME)
 	if nextCapture.After(hotspot.LastCapture) {
 		database.Model(&hotspot).Update("LastCapture", time.Now())
 		database.Model(&hotspot).Update("Conqueror", id)
@@ -123,15 +125,39 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ssid, name, color := updateHotspot(hotspot)
-	log.Println("New SSID for Hotspot: " + ssid)
+	ssid := updateHotspot(hotspot)
 	data, err := json.Marshal(struct {
-		SSID    string `json:"ssid"`
+		SSID string `json:"ssid"`
+	}{
+		SSID: ssid,
+	})
+	if err != nil {
+		http.Error(w, "json error", http.StatusInternalServerError)
+	}
+
+	w.Write(data)
+}
+
+func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
+	tokens, ok := r.URL.Query()["token"]
+	if !ok || len(tokens) != 1 {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+	token := tokens[0]
+
+	hotspot := validateHotspot(token)
+	if hotspot == nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	name, color := fetchHotspot(hotspot)
+	data, err := json.Marshal(struct {
 		Name    string `json:"name"`
 		Color   string `json:"color"`
 		Capture int64  `json:"capture"`
 	}{
-		SSID:    ssid,
 		Name:    name,
 		Color:   color,
 		Capture: int64(hotspot.LastCapture.Unix()),

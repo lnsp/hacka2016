@@ -16,6 +16,7 @@ import (
 const (
 	MAX_DISTANCE = 0.1
 	ULTIMATE_KEY = "lebonbon"
+	CAPTURE_TIME = 180
 )
 
 // The database endpoint
@@ -67,6 +68,7 @@ func main() {
 	router.HandleFunc("/nearby/{latitude}/{longitude}", nearbyHandler).Methods("GET")
 	router.HandleFunc("/capture/{ssid}", captureHotspotHandler).Methods("GET")
 	router.HandleFunc("/hotspot/setup", setupHotspotHandler).Methods("GET")
+	router.HandleFunc("/hotspot/fetch", fetchHotspotHandler).Methods("GET")
 	router.HandleFunc("/hotspot/update", updateHotspotHandler).Methods("GET")
 
 	router.HandleFunc("/settings/picture/{id}", getPictureHandler).Methods("GET")
