@@ -15,6 +15,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/kellydunn/golang-geo"
+)
+
+const (
+	MAX_DISTANCE = 0.1
 )
 
 // The database endpoint
@@ -39,6 +44,13 @@ type JSONProfile struct {
 	Points  int    `json:"points"`
 	Friends []uint `json:"friends"`
 	Picture string `json:"picture"`
+}
+
+type Position struct {
+	Date      time.Time
+	Latitude  float64
+	Longitude float64
+	Source    uint
 }
 
 type Friendship struct {
@@ -127,6 +139,10 @@ func createAccount(device, name string) (uint, string) {
 	database.Find(&otherProfiles)
 
 	for _, element := range otherProfiles {
+		if element.ID == profile.ID {
+			continue
+		}
+
 		database.Create(&Friendship{
 			Source: profile.ID,
 			Target: element.ID,
@@ -147,6 +163,60 @@ func getFriends(id uint) []uint {
 	}
 
 	return ids
+}
+
+func getID(token string) uint {
+	var account Account
+	var profile Profile
+
+	database.First(&account, "Token = ?", token)
+	database.Model(&account).Related(&profile, "User")
+
+	return profile.ID
+}
+
+func updatePosition(id uint, latitude, longitude float64) {
+	position := &Position{
+		Source:    id,
+		Latitude:  latitude,
+		Longitude: longitude,
+		Date:      time.Now(),
+	}
+	database.Create(position)
+}
+
+type nearbyEntry struct {
+	ID       uint      `json:"id"`
+	Distance float64   `json:"distance"`
+	Date     time.Time `json:"date"`
+}
+
+func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
+	lastHour := time.Now().Add(-time.Hour)
+
+	positions := []Position{}
+	database.Where("date > ?", lastHour).Find(&positions)
+
+	sourcePoint := geo.NewPoint(latitude, longitude)
+	entries := []nearbyEntry{}
+
+	for _, element := range positions {
+		if element.Source == id {
+			continue
+		}
+
+		nearbyPoint := geo.NewPoint(element.Latitude, element.Longitude)
+		distance := sourcePoint.GreatCircleDistance(nearbyPoint)
+		if distance < MAX_DISTANCE {
+			entries = append(entries, nearbyEntry{
+				ID:       element.Source,
+				Date:     element.Date,
+				Distance: distance,
+			})
+		}
+	}
+
+	return entries
 }
 
 // Retrieve profile by account token.
@@ -194,6 +264,39 @@ func getPicture(pictureID string) []byte {
 // Upload a new picture.
 func addPicture(id int, data []byte) string {
 	return ""
+}
+
+// Handle nearby
+func nearbyHandler(w http.ResponseWriter, r *http.Request) {
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 || !validate(accessTokens[0]) {
+		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		return
+	}
+	token := accessTokens[0]
+
+	vars := mux.Vars(r)
+	latitude, err := strconv.ParseFloat(vars["latitude"], 64)
+	if err != nil {
+		http.Error(w, "invalid latitude", http.StatusInternalServerError)
+		return
+	}
+	longitude, err := strconv.ParseFloat(vars["longitude"], 64)
+	if err != nil {
+		http.Error(w, "invalid longitude", http.StatusInternalServerError)
+		return
+	}
+
+	id := getID(token)
+	updatePosition(id, latitude, longitude)
+	nearby := getNearby(id, latitude, longitude)
+
+	data, err := json.Marshal(nearby)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Write(data)
 }
 
 // Handle generic endpoint requests.
@@ -309,7 +412,7 @@ func initDatabase() {
 	if err != nil {
 		panic(err)
 	}
-	database.AutoMigrate(&Friendship{}, &Profile{}, &Account{})
+	database.AutoMigrate(&Position{}, &Friendship{}, &Profile{}, &Account{})
 	database.LogMode(true)
 }
 
@@ -324,6 +427,7 @@ func main() {
 	router.HandleFunc("/profile", ownProfileHandler).Methods("GET")
 	router.HandleFunc("/picture", getPictureHandler).Methods("GET")
 	router.HandleFunc("/picture", uploadPictureHandler).Methods("POST")
+	router.HandleFunc("/nearby/{latitude}/{longitude}", nearbyHandler).Methods("GET")
 
 	http.Handle("/", router)
 
