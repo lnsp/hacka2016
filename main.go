@@ -82,17 +82,46 @@ type Account struct {
 // The hotspots.
 type Hotspot struct {
 	gorm.Model
-	SSID        string
+	Session     string
 	LastCapture time.Time
 	Conqueror   uint
 	Token       string
+}
+
+func updateHotspot(hotspot *Hotspot) (string, string, string) {
+	ssid := generateToken(hotspot.Session)
+	database.Model(hotspot).Update("Session", ssid)
+
+	var name, color string
+	if hotspot.Conqueror > 0 {
+		var conqueror Profile
+		database.First(&conqueror, "ID = ?", hotspot.Conqueror)
+		name = conqueror.Name
+		color = conqueror.Color
+	} else {
+		name = "Unknown"
+		color = "FF3400"
+	}
+
+	return ssid, name, color
+}
+
+func captureHotspot(hotspot Hotspot, id uint) bool {
+	nextCapture := time.Now().Add(-time.Minute)
+	if nextCapture.After(hotspot.LastCapture) {
+		database.Model(&hotspot).Update("LastCapture", time.Now())
+		database.Model(&hotspot).Update("Conqueror", id)
+		return true
+	}
+
+	return false
 }
 
 func createHotspot() *Hotspot {
 	token := generateToken(ULTIMATE_KEY)
 	hotspot := &Hotspot{
 		Token:       token,
-		SSID:        generateToken(token + ULTIMATE_KEY),
+		Session:     generateToken(token + ULTIMATE_KEY),
 		LastCapture: time.Now(),
 		Conqueror:   0,
 	}
@@ -480,7 +509,7 @@ func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		SSID  string `json:"ssid"`
 	}{
 		Token: hotspot.Token,
-		SSID:  hotspot.SSID,
+		SSID:  hotspot.Session,
 	})
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -490,7 +519,40 @@ func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func captureHotspotHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "capture hotspot handler")
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
+		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	id := getID(accessTokens[0])
+	ssid := vars["ssid"]
+
+	if id == 0 {
+		http.Error(w, "invalid user", http.StatusUnauthorized)
+		return
+	}
+
+	var hotspot Hotspot
+	database.First(&hotspot, "Session = ?", ssid)
+	if hotspot.Session != ssid {
+		http.Error(w, "invalid hotspot ssid", http.StatusInternalServerError)
+		return
+	}
+
+	success := captureHotspot(hotspot, id)
+	data, err := json.Marshal(struct {
+		Success bool `json:"success"`
+	}{
+		Success: success,
+	})
+	if err != nil {
+		http.Error(w, "failed json parsing", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
 }
 
 func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
@@ -507,26 +569,13 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ssid := generateToken(hotspot.SSID)
-	database.Model(hotspot).Update("SSID", ssid)
-
-	var name, color string
-	if hotspot.Conqueror > 0 {
-		var conqueror Profile
-		database.First(&conqueror, "ID = ?", hotspot.Conqueror)
-		name = conqueror.Name
-		color = conqueror.Color
-	} else {
-		name = "Unknown"
-		color = "FF3400"
-	}
-
+	ssid, name, color := updateHotspot(hotspot)
 	data, err := json.Marshal(struct {
 		SSID  string `json:"ssid"`
 		Name  string `json:"name"`
 		Color string `json:"color"`
 	}{
-		SSID:  hotspot.SSID,
+		SSID:  ssid,
 		Name:  name,
 		Color: color,
 	})
