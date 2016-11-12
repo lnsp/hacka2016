@@ -19,11 +19,19 @@ type AppEndpoint struct {
 }
 
 type Profile struct {
-	ID      int    `json:"id"`
+	ID      uint   `json:"id"`
 	Name    string `json:"name"`
 	Points  int    `json:"points"`
-	Friends []int  `json:"friends"`
+	Friends []uint `json:"friends"`
 	Picture string `json:"picture"`
+}
+
+type ProfileModel struct {
+	gorm.Model
+	Name    string
+	Points  int
+	Friends []ProfileModel
+	Picture string
 }
 
 type AccountModel struct {
@@ -62,23 +70,53 @@ func createAccessToken(device string) string {
 }
 
 func createProfile(name string) *Profile {
-	return &Profile{
-		ID:      1,
-		Name:    "Mr. Pot",
-		Points:  38,
-		Friends: []int{},
-		Picture: "potpicture",
+	profile := ProfileModel{
+		Name:    name,
+		Points:  0,
+		Friends: []ProfileModel{},
+		Picture: "",
 	}
+	database.Create(&profile)
+	profileJson := &Profile{
+		ID:      profile.ID,
+		Name:    profile.Name,
+		Friends: []uint{},
+	}
+
+	var friends []ProfileModel
+	database.Model(&profile).Related(&friends)
+
+	for _, element := range friends {
+		profileJson.Friends = append(profileJson.Friends, element.ID)
+	}
+
+	return profileJson
 }
 
 func getProfile(id int) *Profile {
-	return &Profile{
-		ID:      1,
-		Name:    "Mr. Pot",
-		Points:  38,
-		Friends: []int{},
-		Picture: "potpicture",
+	var profile ProfileModel
+
+	database.Where("id = ?", id).First(&profile)
+	if profile.ID == 0 {
+		return nil
 	}
+
+	profileJson := &Profile{
+		ID:      profile.ID,
+		Name:    profile.Name,
+		Points:  profile.Points,
+		Friends: []uint{},
+		Picture: "",
+	}
+
+	var friends []ProfileModel
+	database.Model(&profile).Related(&friends)
+
+	for _, element := range friends {
+		profileJson.Friends = append(profileJson.Friends, element.ID)
+	}
+
+	return profileJson
 }
 
 func getPicture(pictureID string) []byte {
@@ -167,7 +205,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(struct {
 		Token string `json:"token"`
-		ID    int    `json:"id"`
+		ID    uint   `json:"id"`
 	}{
 		Token: token,
 		ID:    profile.ID,
@@ -195,7 +233,7 @@ func initDatabase() {
 	if err != nil {
 		panic(err)
 	}
-	database.AutoMigrate(&AccountModel{})
+	database.AutoMigrate(&ProfileModel{}, &AccountModel{})
 }
 
 func main() {
