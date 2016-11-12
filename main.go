@@ -85,13 +85,13 @@ type Hotspot struct {
 }
 
 // Validate an access token.
-func validate(accessToken string) bool {
+func validate(accessToken string) *Account {
 	var account Account
 	database.First(&account, "Token = ?", accessToken)
 	if account.ID == 0 {
-		return false
+		return nil
 	}
-	return true
+	return &account
 }
 
 // Generate a new access token.
@@ -197,6 +197,7 @@ type nearbyEntry struct {
 	ID       uint      `json:"id"`
 	Distance float64   `json:"distance"`
 	Date     time.Time `json:"date"`
+	Device   string    `json:"device"`
 }
 
 // Retrieve all nearby entities.
@@ -229,10 +230,17 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 		nearbyPoint := geo.NewPoint(element.Latitude, element.Longitude)
 		distance := sourcePoint.GreatCircleDistance(nearbyPoint)
 		if distance < MAX_DISTANCE {
+			var account Account
+			var profile Profile
+
+			database.Where("ID = ?", element.Source).First(&profile)
+			database.Where("ID = ?", profile.AccountID).First(&account)
+
 			entries = append(entries, nearbyEntry{
 				ID:       element.Source,
 				Date:     element.Date,
 				Distance: distance,
+				Device:   account.Device,
 			})
 		}
 	}
@@ -290,7 +298,7 @@ func addPicture(id int, data []byte) string {
 // Handle nearby
 func nearbyHandler(w http.ResponseWriter, r *http.Request) {
 	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || !validate(accessTokens[0]) {
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
 		http.Error(w, "invalid access token", http.StatusUnauthorized)
 		return
 	}
@@ -337,7 +345,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // Handle /profile?token=
 func ownProfileHandler(w http.ResponseWriter, r *http.Request) {
 	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || !validate(accessTokens[0]) {
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
 		http.Error(w, "invalid access token", http.StatusUnauthorized)
 		return
 	}
@@ -361,7 +369,7 @@ func ownProfileHandler(w http.ResponseWriter, r *http.Request) {
 // Handle /profile/{id}?token=
 func profileHandler(w http.ResponseWriter, r *http.Request) {
 	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || !validate(accessTokens[0]) {
+	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
 		http.Error(w, "invalid access token", http.StatusUnauthorized)
 		return
 	}
