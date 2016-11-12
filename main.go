@@ -5,12 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
+
+	"github.com/gorilla/handlers"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
 type AppEndpoint struct {
@@ -73,7 +76,6 @@ func createProfile(name string) *Profile {
 	profile := ProfileModel{
 		Name:    name,
 		Points:  0,
-		Friends: []ProfileModel{},
 		Picture: "",
 	}
 	database.Create(&profile)
@@ -244,5 +246,5 @@ func main() {
 	http.HandleFunc("/profile", profileHandler)
 	http.HandleFunc("/picture/get", getPictureHandler)
 	http.HandleFunc("/picture/upload", uploadPictureHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", handlers.LoggingHandler(os.Stdout, http.DefaultServeMux)))
 }
