@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -123,6 +124,7 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssid, name, color := updateHotspot(hotspot)
+	log.Println("New SSID for Hotspot: " + ssid)
 	data, err := json.Marshal(struct {
 		SSID    string `json:"ssid"`
 		Name    string `json:"name"`
