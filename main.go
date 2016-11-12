@@ -14,6 +14,14 @@ import (
 )
 
 const (
+	DEFAULT_CONQUEROR     = ""
+	DEFAULT_HOTSPOT_COLOR = "00FF00"
+
+	BAD_JSON      = "Failed JSON parsing"
+	INVALID_TOKEN = "Invalid authentication token"
+	INVALID_USER  = "Invalid user ID"
+	INVALID_SSID  = "Invalid session ID"
+
 	MAX_DISTANCE = 0.1
 	ULTIMATE_KEY = "lebonbon"
 	CAPTURE_TIME = 180
