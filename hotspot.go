@@ -31,7 +31,11 @@ func fetchHotspot(hotspot *Hotspot) (string, string) {
 
 func captureHotspot(hotspot Hotspot, id uint) bool {
 	nextCapture := time.Now().Add(-time.Second * CAPTURE_TIME)
-	if nextCapture.After(hotspot.LastCapture) {
+	if nextCapture.After(hotspot.LastCapture) && hotspot.Conqueror != id {
+		timeDifference := time.Now().Sub(nextCapture)
+		increasePoints(hotspot.Conqueror, uint(timeDifference.Seconds())/CONQUER_POINTS_SCALAR)
+		increasePoints(id, CONQUER_POINTS)
+
 		database.Model(&hotspot).Update(Hotspot{LastCapture: time.Now(), Conqueror: id})
 		return true
 	}
@@ -44,7 +48,7 @@ func createHotspot() *Hotspot {
 	hotspot := &Hotspot{
 		Token:       token,
 		Session:     generateSSID(token + ULTIMATE_KEY),
-		LastCapture: time.Now(),
+		LastCapture: time.Now().Add(-time.Second * CAPTURE_TIME),
 		Conqueror:   0,
 	}
 	database.Create(hotspot)

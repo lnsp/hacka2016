@@ -33,7 +33,7 @@ func addPicture(id uint, stream io.Reader) (string, error) {
 func getPictureHandler(w http.ResponseWriter, r *http.Request) {
 	accessTokens, ok := r.URL.Query()["token"]
 	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
@@ -43,14 +43,14 @@ func getPictureHandler(w http.ResponseWriter, r *http.Request) {
 	path := PICTURE_FOLDER + strconv.FormatUint(id, 10)
 	file, err := os.Open(path)
 	if err != nil {
-		http.Error(w, "image not found", http.StatusNotFound)
+		http.Error(w, MISSING_IMAGE, http.StatusNotFound)
 		return
 	}
 	defer file.Close()
 
 	_, err = io.Copy(w, file)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(w, BAD_COPY, http.StatusInternalServerError)
 		return
 	}
 }
@@ -59,14 +59,14 @@ func getPictureHandler(w http.ResponseWriter, r *http.Request) {
 func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
 	accessTokens, ok := r.URL.Query()["token"]
 	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, "invalid access token", http.StatusUnauthorized)
+		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 	token := accessTokens[0]
 	id := getID(token)
 	path, err := addPicture(id, r.Body)
 	if err != nil {
-		http.Error(w, "failed to upload picture", http.StatusBadRequest)
+		http.Error(w, BAD_COPY, http.StatusBadRequest)
 		return
 	}
 
@@ -76,7 +76,7 @@ func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
 		Path: path,
 	})
 	if err != nil {
-		http.Error(w, "json error", http.StatusInternalServerError)
+		http.Error(w, BAD_JSON, http.StatusInternalServerError)
 	}
 
 	w.Write(data)

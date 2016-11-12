@@ -23,7 +23,7 @@ type Friendship struct {
 type Profile struct {
 	gorm.Model
 	Name      string
-	Points    int
+	Points    uint
 	Picture   string
 	AccountID uint `gorm:"index"`
 	Color     string
