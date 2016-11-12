@@ -576,13 +576,15 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 
 	ssid, name, color := updateHotspot(hotspot)
 	data, err := json.Marshal(struct {
-		SSID  string `json:"ssid"`
-		Name  string `json:"name"`
-		Color string `json:"color"`
+		SSID    string `json:"ssid"`
+		Name    string `json:"name"`
+		Color   string `json:"color"`
+		Capture string `json:"capture"`
 	}{
-		SSID:  ssid,
-		Name:  name,
-		Color: color,
+		SSID:    ssid,
+		Name:    name,
+		Color:   color,
+		Capture: hotspot.LastCapture.String(),
 	})
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
