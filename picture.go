@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-const PICTURE_FOLDER = ""
+const PICTURE_FOLDER = "picture/"
 
 // Upload a new picture.
 func addPicture(id uint, stream io.Reader) (string, error) {
