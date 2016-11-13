@@ -48,7 +48,7 @@ func createHotspot() *Hotspot {
 	hotspot := &Hotspot{
 		Token:       token,
 		Session:     "1",
-		LastCapture: time.Now().Add(-time.Second * CAPTURE_TIME),
+		LastCapture: time.Now(),
 		Conqueror:   0,
 	}
 	database.Create(hotspot)
