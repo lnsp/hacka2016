@@ -20,8 +20,8 @@ type JSONProfile struct {
 
 func increasePoints(id, amount uint) uint {
 	var profile Profile
-	count := profile.Points + amount
 	database.First(&profile, "ID = ?", id)
+	count := profile.Points + amount
 	database.Model(&profile).Update(Profile{Points: count})
 	return count
 }
