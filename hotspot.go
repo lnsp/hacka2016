@@ -47,7 +47,7 @@ func createHotspot() *Hotspot {
 	token := generateSSID(ULTIMATE_KEY)
 	hotspot := &Hotspot{
 		Token:       token,
-		Session:     generateSSID(token + ULTIMATE_KEY),
+		Session:     "1",
 		LastCapture: time.Now().Add(-time.Second * CAPTURE_TIME),
 		Conqueror:   0,
 	}
