@@ -90,6 +90,7 @@ func main() {
 	router.HandleFunc("/hotspot/fetch", fetchHotspotHandler).Methods("GET")
 	router.HandleFunc("/hotspot/update", updateHotspotHandler).Methods("GET")
 
+	router.HandleFunc("/settings/name", settingsNameHandler).Methods("GET")
 	router.HandleFunc("/settings/picture/{id}", getPictureHandler).Methods("GET")
 	router.HandleFunc("/settings/picture", uploadPictureHandler).Methods("POST")
 	router.HandleFunc("/settings/color", settingsColorHandler).Methods("GET")
