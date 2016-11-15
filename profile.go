@@ -1,15 +1,23 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 )
 
+const (
+	STATUS_INVALID_USER        = "Invalid user ID"
+	STATUS_INVALID_SSID        = "Invalid session ID"
+	STATUS_INVALID_DEVICE      = "Invalid device hash"
+	STATUS_MISSING_IMAGE       = "Image not found"
+	STATUS_MISSING_PROFILE     = "Profile not found"
+	STATUS_EXISTING_FRIENDSHIP = "Friendship already exists"
+)
+
 // The JSON profile structure
-type JSONProfile struct {
+type userProfile struct {
 	ID      uint   `json:"id"`
 	Name    string `json:"name"`
 	Points  uint   `json:"points"`
@@ -18,11 +26,17 @@ type JSONProfile struct {
 	Color   string `json:"color"`
 }
 
+// Increase user points
 func increasePoints(id, amount uint) uint {
+	// Find profile
 	var profile Profile
-	database.First(&profile, "ID = ?", id)
+	database.First(&profile, SQL_FIND_PROFILE_BY_ID, id)
+
+	// Update profile points
 	count := profile.Points + amount
 	database.Model(&profile).Update(Profile{Points: count})
+
+	// Return updated value
 	return count
 }
 
@@ -31,20 +45,24 @@ func createAccount(device, name string) (uint, string) {
 	var account Account
 	var profile Profile
 
-	database.First(&account, "Device = ?", device)
+	database.First(&account, SQL_FIND_ACCOUNT_BY_DEVICE, device)
+
+	// Account with device ID already exists
 	if account.Token != "" {
-		database.Model(&account).Related(&profile, "User")
+		database.Model(&account).Related(&profile, ACCOUNT_PROFILE_RELATION)
 		return profile.ID, account.Token
 	}
 
+	// Store new profile
 	profile = Profile{
 		Name:    name,
-		Points:  0,
-		Picture: "",
+		Points:  DEFAULT_POINTS,
+		Picture: DEFAULT_PICTURE_PATH,
 		Color:   DEFAULT_USER_COLOR,
 	}
 	database.Create(&profile)
 
+	// Store associated account
 	token := generateToken(device)
 	account = Account{
 		Device: device,
@@ -53,15 +71,16 @@ func createAccount(device, name string) (uint, string) {
 	}
 	database.Create(&account)
 
+	// Return new credentials
 	return account.User.ID, account.Token
 }
 
+// Get friend ids of specific user
 func getFriends(id uint) []uint {
-	ids := make([]uint, 0, 0)
-
+	var ids []uint
 	var friendships []Friendship
-	database.Where("Source = ?", id).Find(&friendships)
 
+	database.Where(SQL_FIND_FRIENDSHIPS_BY_SOURCE, id).Find(&friendships)
 	for _, element := range friendships {
 		ids = append(ids, element.Target)
 	}
@@ -69,166 +88,136 @@ func getFriends(id uint) []uint {
 	return ids
 }
 
+// Get profile ID by account token
 func getID(token string) uint {
 	var account Account
 	var profile Profile
 
-	database.First(&account, "Token = ?", token)
-	database.Model(&account).Related(&profile, "User")
+	database.First(&account, SQL_FIND_ACCOUNT_BY_TOKEN, token)
+	database.Model(&account).Related(&profile, ACCOUNT_PROFILE_RELATION)
 
 	return profile.ID
 }
 
 // Retrieve profile by account token.
-func getOwnProfile(token string) *JSONProfile {
+func getOwnProfile(token string) *Profile {
 	var profile Profile
 	var account Account
 
-	database.First(&account, "Token = ?", token)
-	database.Model(&account).Related(&profile, "User")
+	database.First(&account, SQL_FIND_ACCOUNT_BY_TOKEN, token)
+	database.Model(&account).Related(&profile, ACCOUNT_PROFILE_RELATION)
 
-	return toJSONProfile(profile)
+	return &profile
+}
+
+// Retrieve profile by ID.
+func getProfile(id int) *Profile {
+	var profile Profile
+
+	database.First(&profile, id)
+
+	return &profile
 }
 
 // Convert a profile model to a JSON compatible structure.
-func toJSONProfile(profile Profile) *JSONProfile {
+func toJSONProfile(profile *Profile) *userProfile {
 	database.Model(&profile)
 
-	profileJson := &JSONProfile{
+	profileJson := &userProfile{
 		ID:      profile.ID,
 		Name:    profile.Name,
 		Points:  profile.Points,
 		Friends: getFriends(profile.ID),
 		Color:   profile.Color,
-		Picture: "",
+		Picture: profile.Picture,
 	}
+
 	return profileJson
-}
-
-// Retrieve profile by ID.
-func getProfile(id int) *JSONProfile {
-	var profile Profile
-
-	database.First(&profile, id)
-	if profile.ID == 0 {
-		return nil
-	}
-
-	return toJSONProfile(profile)
 }
 
 // Handle /profile?token=
 func ownProfileHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, "invalid access token", http.StatusUnauthorized)
-		return
-	}
-	token := accessTokens[0]
-
-	profile := getOwnProfile(token)
-	if profile == nil {
-		http.Error(w, MISSING_PROFILE, http.StatusInternalServerError)
-		return
-	}
-
-	data, err := json.Marshal(profile)
+	token, err := validateRequest(r)
 	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
-	w.Write(data)
+	sendJSONResponse(toJSONProfile(getOwnProfile(token)), w)
 }
 
 // Handle /profile/{id}?token=
 func profileHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+	_, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
 	vars := mux.Vars(r)
 	profileID, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		http.Error(w, INVALID_USER, http.StatusNotFound)
+		http.Error(w, STATUS_INVALID_USER, http.StatusNotFound)
 	}
-	profile := getProfile(profileID)
-
-	if profile == nil {
-		http.Error(w, MISSING_PROFILE, http.StatusNotFound)
-		return
-	}
-
-	data, err := json.Marshal(*profile)
-	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+	sendJSONResponse(toJSONProfile(getProfile(profileID)), w)
 }
 
 // Handle /register?device&name
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	devices, ok := r.URL.Query()["device"]
 	if !ok || len(devices) != 1 {
-		http.Error(w, INVALID_DEVICE, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_DEVICE, http.StatusUnauthorized)
 		return
 	}
 	deviceID := devices[0]
 
 	names, ok := r.URL.Query()["name"]
 	if !ok || len(names) != 1 {
-		http.Error(w, INVALID_NAME, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_NAME, http.StatusUnauthorized)
 		return
 	}
 	name := names[0]
 
 	id, token := createAccount(deviceID, name)
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Token string `json:"token"`
 		ID    uint   `json:"id"`
 	}{
 		Token: token,
 		ID:    id,
-	})
-
-	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+	}, w)
 }
 
 func meetHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+	token, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
+
+	id := getID(token)
+
+	// get nearby device id
 	vars := mux.Vars(r)
 	device := vars["device"]
-	id := getID(accessTokens[0])
 
 	// get device user id
 	var account Account
-	database.First(&account, "Device = ?", device)
+	database.First(&account, SQL_FIND_ACCOUNT_BY_DEVICE, device)
 	if account.Token == "" {
-		http.Error(w, INVALID_DEVICE, http.StatusBadRequest)
+		http.Error(w, STATUS_INVALID_DEVICE, http.StatusBadRequest)
 		return
 	}
 
 	var profile Profile
-	database.Model(&account).Related(&profile, "User")
+	database.Model(&account).Related(&profile, ACCOUNT_PROFILE_RELATION)
 
 	// Check if friendship exists
 	var friendship Friendship
-	database.First(&friendship, "Source = ? AND Target = ?", id, profile.ID)
+	database.First(&friendship, SQL_FIND_FRIENDSHIP, id, profile.ID)
+
 	if friendship.Source == id {
-		http.Error(w, EXISTING_FRIENDSHIP, http.StatusBadRequest)
+		http.Error(w, STATUS_EXISTING_FRIENDSHIP, http.StatusBadRequest)
 		return
 	}
 
@@ -241,17 +230,11 @@ func meetHandler(w http.ResponseWriter, r *http.Request) {
 
 	increasePoints(friendship.Source, MEET_POINTS)
 
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Source uint `json:"source"`
 		Target uint `json:"target"`
 	}{
 		Source: id,
 		Target: profile.ID,
-	})
-	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+	}, w)
 }

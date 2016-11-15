@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -10,7 +9,9 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const PICTURE_FOLDER = "picture/"
+const (
+	PICTURE_FOLDER = "picture/"
+)
 
 // Upload a new picture.
 func addPicture(id uint, stream io.Reader) (string, error) {
@@ -31,9 +32,9 @@ func addPicture(id uint, stream io.Reader) (string, error) {
 
 // Handle /picture GET
 func getPictureHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+	_, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
@@ -43,41 +44,36 @@ func getPictureHandler(w http.ResponseWriter, r *http.Request) {
 	path := PICTURE_FOLDER + strconv.FormatUint(id, 10)
 	file, err := os.Open(path)
 	if err != nil {
-		http.Error(w, MISSING_IMAGE, http.StatusNotFound)
+		http.Error(w, STATUS_MISSING_IMAGE, http.StatusNotFound)
 		return
 	}
 	defer file.Close()
 
 	_, err = io.Copy(w, file)
 	if err != nil {
-		http.Error(w, BAD_COPY, http.StatusInternalServerError)
+		http.Error(w, STATUS_BAD_COPY, http.StatusInternalServerError)
 		return
 	}
 }
 
 // Handle /picture POST
 func uploadPictureHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+	token, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
-	token := accessTokens[0]
+
 	id := getID(token)
 	path, err := addPicture(id, r.Body)
 	if err != nil {
-		http.Error(w, BAD_COPY, http.StatusBadRequest)
+		http.Error(w, STATUS_BAD_COPY, http.StatusBadRequest)
 		return
 	}
 
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Path string `json:"path"`
 	}{
 		Path: path,
-	})
-	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
-	}
-
-	w.Write(data)
+	}, w)
 }

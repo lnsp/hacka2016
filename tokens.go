@@ -3,29 +3,13 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"net/http"
 	"time"
 )
 
-func validateHotspot(token string) *Hotspot {
-	var hotspot Hotspot
-	database.First(&hotspot, "token = ?", token)
-
-	if hotspot.Token != token {
-		return nil
-	}
-
-	return &hotspot
-}
-
-// Validate an access token.
-func validate(accessToken string) *Account {
-	var account Account
-	database.First(&account, "Token = ?", accessToken)
-	if account.ID == 0 {
-		return nil
-	}
-	return &account
-}
+const (
+	STATUS_INVALID_TOKEN = "Invalid authentication token"
+)
 
 // Generate a new access token.
 func generateToken(device string) string {
@@ -38,7 +22,37 @@ func generateToken(device string) string {
 
 func generateSSID(active string) string {
 	str := generateToken(active)
-	return "honeypot" + str[:24]
+	return DEFAULT_SSID_PREFIX + str[:MAX_UNIQ_SSID_LEN]
+}
+
+// Validate a user request
+func validateRequest(r *http.Request) (string, error) {
+	var account Account
+
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 {
+		return "", invalidTokenError
+	}
+
+	token := accessTokens[0]
+	database.First(&account, SQL_FIND_ACCOUNT_BY_TOKEN, token)
+
+	if token != account.Token && token == "" {
+		return "", invalidTokenError
+	}
+
+	return account.Token, nil
+}
+
+func validateHotspot(token string) *Hotspot {
+	var hotspot Hotspot
+	database.First(&hotspot, "token = ?", token)
+
+	if hotspot.Token != token {
+		return nil
+	}
+
+	return &hotspot
 }
 
 // Create a new access token or retrieve an existing.

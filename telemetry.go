@@ -1,13 +1,16 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/kellydunn/golang-geo"
+)
+
+const (
+	STATUS_INVALID_GPS = "Invalid GPS location"
 )
 
 func updatePosition(id uint, latitude, longitude float64) {
@@ -32,7 +35,7 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 	lastHour := time.Now().Add(-time.Minute)
 
 	positions := []Position{}
-	database.Where("date > ?", lastHour).Order("date desc").Find(&positions)
+	database.Where(SQL_FIND_LATEST, lastHour).Order(SQL_DATE_DESC_ORDER).Find(&positions)
 
 	sourcePoint := geo.NewPoint(latitude, longitude)
 	entries := []nearbyEntry{}
@@ -44,15 +47,11 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 			continue
 		}
 
-		if existing, ok := dates[element.Source]; ok {
-			if existing.After(element.Date) {
-				continue
-			} else {
-				dates[element.Source] = element.Date
-			}
-		} else {
-			dates[element.Source] = element.Date
+		existing, ok := dates[element.Source]
+		if existing.After(element.Date) && ok {
+			continue
 		}
+		dates[element.Source] = element.Date
 
 		nearbyPoint := geo.NewPoint(element.Latitude, element.Longitude)
 		distance := sourcePoint.GreatCircleDistance(nearbyPoint)
@@ -60,8 +59,8 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 			var account Account
 			var profile Profile
 
-			database.Where("ID = ?", element.Source).First(&profile)
-			database.Where("ID = ?", profile.AccountID).First(&account)
+			database.Where(SQL_FIND_PROFILE_BY_ID, element.Source).First(&profile)
+			database.Where(SQL_FIND_PROFILE_BY_ID, profile.AccountID).First(&account)
 
 			entries = append(entries, nearbyEntry{
 				ID:       element.Source,
@@ -77,22 +76,22 @@ func getNearby(id uint, latitude, longitude float64) []nearbyEntry {
 
 // Handle nearby
 func nearbyHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, "invalid access token", http.StatusUnauthorized)
+	token, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
-	token := accessTokens[0]
 
 	vars := mux.Vars(r)
 	latitude, err := strconv.ParseFloat(vars["latitude"], 64)
 	if err != nil {
-		http.Error(w, "invalid latitude", http.StatusInternalServerError)
+		http.Error(w, STATUS_INVALID_GPS, http.StatusBadRequest)
 		return
 	}
+
 	longitude, err := strconv.ParseFloat(vars["longitude"], 64)
 	if err != nil {
-		http.Error(w, "invalid longitude", http.StatusInternalServerError)
+		http.Error(w, STATUS_INVALID_GPS, http.StatusBadRequest)
 		return
 	}
 
@@ -100,14 +99,9 @@ func nearbyHandler(w http.ResponseWriter, r *http.Request) {
 	updatePosition(id, latitude, longitude)
 	nearby := getNearby(id, latitude, longitude)
 
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Nearby []nearbyEntry `json:"nearby"`
 	}{
 		Nearby: nearby,
-	})
-	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
+	}, w)
 }

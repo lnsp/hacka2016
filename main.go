@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,29 +15,28 @@ import (
 )
 
 const (
-	MEET_POINTS           = 25
-	CONQUER_POINTS        = 10
+	MAX_UNIQ_SSID_LEN     = 24
+	TIMESTAMP_FORMAT      = 20060102150405
+	MEET_POINTS           = 1
+	CONQUER_POINTS        = 5
 	CONQUER_POINTS_SCALAR = 100
 
+	DEFAULT_SSID_PREFIX   = "honeypot"
 	DEFAULT_USER_COLOR    = "FF4081"
 	DEFAULT_CONQUEROR     = ""
 	DEFAULT_HOTSPOT_COLOR = "00FF00"
+	DEFAULT_PICTURE_PATH  = ""
+	DEFAULT_POINTS        = 0
 
-	BAD_JSON            = "Failed JSON parsing"
-	BAD_COPY            = "Failed byte copying"
-	INVALID_TOKEN       = "Invalid authentication token"
-	INVALID_USER        = "Invalid user ID"
-	INVALID_SSID        = "Invalid session ID"
-	INVALID_NAME        = "Invalid user name"
-	INVALID_DEVICE      = "Invalid device hash"
-	MISSING_IMAGE       = "Image not found"
-	MISSING_PROFILE     = "Profile not found"
-	EXISTING_FRIENDSHIP = "Fuck off"
+	STATUS_BAD_JSON = "Failed JSON parsing"
+	STATUS_BAD_COPY = "Failed byte copying"
 
 	MAX_DISTANCE = 0.1
 	ULTIMATE_KEY = "lebonbon"
 	CAPTURE_TIME = 180
 )
+
+var invalidTokenError error = errors.New("Invalid access token")
 
 // The database endpoint
 var database *gorm.DB
@@ -98,4 +98,14 @@ func main() {
 	http.Handle("/", router)
 
 	log.Fatal(http.ListenAndServe(":8080", handlers.LoggingHandler(os.Stdout, http.DefaultServeMux)))
+}
+
+func sendJSONResponse(element interface{}, w http.ResponseWriter) {
+	data, err := json.Marshal(element)
+	if err != nil {
+		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(data)
 }

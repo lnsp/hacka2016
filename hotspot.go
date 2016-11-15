@@ -58,7 +58,7 @@ func createHotspot() *Hotspot {
 func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	secrets, ok := r.URL.Query()["secret"]
 	if !ok || len(secrets) != 1 || secrets[0] != ULTIMATE_KEY {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
@@ -71,60 +71,54 @@ func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		SSID:  hotspot.Session,
 	})
 	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
+		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
 		return
 	}
 	w.Write(data)
 }
 
 func captureHotspotHandler(w http.ResponseWriter, r *http.Request) {
-	accessTokens, ok := r.URL.Query()["token"]
-	if !ok || len(accessTokens) != 1 || validate(accessTokens[0]) == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+	token, err := validateRequest(r)
+	if err != nil {
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
 	vars := mux.Vars(r)
-	id := getID(accessTokens[0])
 	ssid := vars["ssid"]
+	id := getID(token)
 
 	if id == 0 {
-		http.Error(w, INVALID_USER, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_USER, http.StatusUnauthorized)
 		return
 	}
 
 	var hotspot Hotspot
-	database.First(&hotspot, "Session = ?", ssid)
+	database.First(&hotspot, SQL_FIND_SESSION_ID, ssid)
 	if hotspot.Session != ssid {
-		http.Error(w, INVALID_SSID, http.StatusInternalServerError)
+		http.Error(w, STATUS_INVALID_SSID, http.StatusInternalServerError)
 		return
 	}
 
 	success := captureHotspot(hotspot, id)
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Success bool `json:"success"`
 	}{
 		Success: success,
-	})
-	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+	}, w)
 }
 
 func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	tokens, ok := r.URL.Query()["token"]
 	if !ok || len(tokens) != 1 {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 	token := tokens[0]
 
 	hotspot := validateHotspot(token)
 	if hotspot == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
@@ -135,7 +129,7 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		SSID: ssid,
 	})
 	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
+		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
 	}
 
 	w.Write(data)
@@ -144,14 +138,14 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	tokens, ok := r.URL.Query()["token"]
 	if !ok || len(tokens) != 1 {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 	token := tokens[0]
 
 	hotspot := validateHotspot(token)
 	if hotspot == nil {
-		http.Error(w, INVALID_TOKEN, http.StatusUnauthorized)
+		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
 
@@ -166,7 +160,7 @@ func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		Capture: int64(hotspot.LastCapture.Unix()),
 	})
 	if err != nil {
-		http.Error(w, BAD_JSON, http.StatusInternalServerError)
+		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
 		return
 	}
 
