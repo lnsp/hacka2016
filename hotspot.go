@@ -1,20 +1,19 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
-func updateHotspot(hotspot *Hotspot) string {
+func updateHotspot(hotspot Hotspot) string {
 	ssid := generateSSID(hotspot.Session)
-	database.Model(hotspot).Update("Session", ssid)
+	database.Model(&hotspot).Update("Session", ssid)
 	return ssid
 }
 
-func fetchHotspot(hotspot *Hotspot) (string, string) {
+func fetchHotspot(hotspot Hotspot) (string, string) {
 	var name, color string
 	if hotspot.Conqueror > 0 {
 		var conqueror Profile
@@ -43,15 +42,15 @@ func captureHotspot(hotspot Hotspot, id uint) bool {
 	return false
 }
 
-func createHotspot() *Hotspot {
+func createHotspot() Hotspot {
 	token := generateSSID(ULTIMATE_KEY)
-	hotspot := &Hotspot{
+	hotspot := Hotspot{
 		Token:       token,
 		Session:     generateSSID(token + ULTIMATE_KEY),
 		LastCapture: time.Now().Add(-time.Second * CAPTURE_TIME),
 		Conqueror:   0,
 	}
-	database.Create(hotspot)
+	database.Create(&hotspot)
 	return hotspot
 }
 
@@ -104,15 +103,8 @@ func captureHotspotHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
-	tokens, ok := r.URL.Query()["token"]
-	if !ok || len(tokens) != 1 {
-		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
-		return
-	}
-	token := tokens[0]
-
-	hotspot := validateHotspot(token)
-	if hotspot == nil {
+	hotspot, err := getHotspot(r)
+	if err != nil {
 		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}
@@ -126,15 +118,8 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
-	tokens, ok := r.URL.Query()["token"]
-	if !ok || len(tokens) != 1 {
-		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
-		return
-	}
-	token := tokens[0]
-
-	hotspot := validateHotspot(token)
-	if hotspot == nil {
+	hotspot, err := getHotspot(r)
+	if err != nil {
 		http.Error(w, STATUS_INVALID_TOKEN, http.StatusUnauthorized)
 		return
 	}

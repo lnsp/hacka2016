@@ -8,18 +8,20 @@ import (
 )
 
 const (
+	TIMESTAMP_FORMAT     = "20060102150405"
 	STATUS_INVALID_TOKEN = "Invalid authentication token"
 )
 
 // Generate a new access token.
 func generateToken(device string) string {
-	timestamp := time.Now().Format("20060102150405")
+	timestamp := time.Now().Format(TIMESTAMP_FORMAT)
 	sha := sha1.New()
 	sha.Write([]byte(timestamp))
 	sha.Write([]byte(device))
 	return hex.EncodeToString(sha.Sum(nil))
 }
 
+// Generate a new SSID
 func generateSSID(active string) string {
 	str := generateToken(active)
 	return DEFAULT_SSID_PREFIX + str[:MAX_UNIQ_SSID_LEN]
@@ -44,15 +46,22 @@ func validateRequest(r *http.Request) (string, error) {
 	return account.Token, nil
 }
 
-func validateHotspot(token string) *Hotspot {
+// Get hotspot by request token
+func getHotspot(r *http.Request) (Hotspot, error) {
 	var hotspot Hotspot
-	database.First(&hotspot, "token = ?", token)
 
+	accessTokens, ok := r.URL.Query()["token"]
+	if !ok || len(accessTokens) != 1 {
+		return hotspot, invalidTokenError
+	}
+	token := accessTokens[0]
+
+	database.First(&hotspot, "token = ?", token)
 	if hotspot.Token != token {
-		return nil
+		return hotspot, invalidTokenError
 	}
 
-	return &hotspot
+	return hotspot, nil
 }
 
 // Create a new access token or retrieve an existing.

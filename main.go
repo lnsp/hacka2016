@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +15,6 @@ import (
 
 const (
 	MAX_UNIQ_SSID_LEN     = 24
-	TIMESTAMP_FORMAT      = 20060102150405
 	MEET_POINTS           = 1
 	CONQUER_POINTS        = 5
 	CONQUER_POINTS_SCALAR = 100
@@ -27,6 +25,7 @@ const (
 	DEFAULT_HOTSPOT_COLOR = "00FF00"
 	DEFAULT_PICTURE_PATH  = ""
 	DEFAULT_POINTS        = 0
+	DEFAULT_HOSTPORT      = ":8080"
 
 	STATUS_BAD_JSON = "Failed JSON parsing"
 	STATUS_BAD_COPY = "Failed byte copying"
@@ -41,26 +40,15 @@ var invalidTokenError error = errors.New("Invalid access token")
 // The database endpoint
 var database *gorm.DB
 
-// The API endpoint
-var appEndpoint = JSONEndpoint{
-	Version:  "1.0",
-	Endpoint: "honeypot4431.cloudapp.net",
-}
-
-// The JSON endpoint structure
-type JSONEndpoint struct {
-	Version  string `json:"version"`
-	Endpoint string `json:"endpoint"`
-}
-
 // Handle generic endpoint requests.
 func versionHandler(w http.ResponseWriter, r *http.Request) {
-	data, err := json.Marshal(appEndpoint)
-	if err != nil {
-		fmt.Fprintln(w, "backend error")
-		return
-	}
-	w.Write(data)
+	sendJSONResponse(struct {
+		Version  string `json:"version"`
+		Endpoint string `json:"endpoint"`
+	}{
+		Version:  "1.0",
+		Endpoint: "honeypot4431",
+	}, w)
 }
 
 // Init database handle
@@ -96,8 +84,8 @@ func main() {
 	router.HandleFunc("/settings/color", settingsColorHandler).Methods("GET")
 
 	http.Handle("/", router)
-
-	log.Fatal(http.ListenAndServe(":8080", handlers.LoggingHandler(os.Stdout, http.DefaultServeMux)))
+	log.Fatal(http.ListenAndServe(DEFAULT_HOSTPORT,
+		handlers.LoggingHandler(os.Stdout, http.DefaultServeMux)))
 }
 
 func sendJSONResponse(element interface{}, w http.ResponseWriter) {
