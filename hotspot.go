@@ -63,18 +63,13 @@ func setupHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hotspot := createHotspot()
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Token string `json:"token"`
 		SSID  string `json:"ssid"`
 	}{
 		Token: hotspot.Token,
 		SSID:  hotspot.Session,
-	})
-	if err != nil {
-		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
+	}, w)
 }
 
 func captureHotspotHandler(w http.ResponseWriter, r *http.Request) {
@@ -123,16 +118,11 @@ func updateHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ssid := updateHotspot(hotspot)
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		SSID string `json:"ssid"`
 	}{
 		SSID: ssid,
-	})
-	if err != nil {
-		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
-	}
-
-	w.Write(data)
+	}, w)
 }
 
 func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +140,7 @@ func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name, color := fetchHotspot(hotspot)
-	data, err := json.Marshal(struct {
+	sendJSONResponse(struct {
 		Name    string `json:"name"`
 		Color   string `json:"color"`
 		Capture int64  `json:"capture"`
@@ -158,11 +148,5 @@ func fetchHotspotHandler(w http.ResponseWriter, r *http.Request) {
 		Name:    name,
 		Color:   color,
 		Capture: int64(hotspot.LastCapture.Unix()),
-	})
-	if err != nil {
-		http.Error(w, STATUS_BAD_JSON, http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(data)
+	}, w)
 }
